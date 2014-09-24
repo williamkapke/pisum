@@ -1,0 +1,22 @@
+{
+  "name": "pisum",
+  "version": "0.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tleef/pisum.git"
+  },
+  "author": "Tom",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/tleef/pisum/issues"
+  },
+  "homepage": "https://github.com/tleef/pisum",
+  "dependencies": {
+    "mongodb": "~1.4.15"
+  }
+}
