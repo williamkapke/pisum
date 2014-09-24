@@ -1,10 +1,10 @@
 var ObjectId = require('mongodb').ObjectID;
 
-var pisum = module.exports = exports = function pisum(options) {
-	return new pod(options);
-}
+module.exports = exports = function pisum(options) {
+	return new Pod(options);
+};
 
-function pod(options) {
+function Pod(options) {
 	this._name = options.name || 'PISUM';
 	this._redis = options.redis;
 	this._mongo = options.mongo;
@@ -13,40 +13,43 @@ function pod(options) {
 	this._projection = options.projection || {};
 }
 
-pod.prototype.find = function(id, done) {
+Pod.prototype.find = function(id, done) {
 	var self = this;
 	var id_s = id.toString();
 
 	self._redis.get(id_s, function(err, doc_s) {
 		if (err) console.error('[' + new Date().toISOString() + '] (' + self._name + '): error reading document from cache:', err);
 		if (doc_s) return done(null, JSON.parse(doc_s));
-		self._mongo.findOne({self._key: ensure(id_s, self._key_type)}, self._projection, function(err, doc) {
+        var query = {};
+        query[self._key] = ensure(id_s, self._key_type);
+		self._mongo.findOne(query, self._projection, function(err, doc) {
 			if (err) return done(err);
 			if (!doc) return done();
 			var doc_s = JSON.stringify(doc);
 			self._redis.set(id_s, doc_s, function(err) {
 				if (err) console.error('[' + new Date().toISOString() + '] (' + self._name + '): error caching document:', err);
-			})
+			});
 			done(null, doc);
 		});
 	})
 
-}
+};
 
-pod.prototype.update = function(id, update, done) {
+Pod.prototype.update = function(id, update, done) {
 	var self = this;
 	var id_s = id.toString();
-
-	self._mongo.update({self._key: ensure(id_s, self._key_type)}, update, function(err) {
+    var query = {};
+    query[self._key] = ensure(id_s, self._key_type);
+	self._mongo.update(query, update, function(err) {
 		if (err) return done(err);
 		self._redis.del(id_s, function(err) {
 			if (err) return done(err);
 			done();
 		})
 	})
-}
+};
 
-pod.prototype.insert = function(doc, done) {
+Pod.prototype.insert = function(doc, done) {
 	var self = this;
 	var id = doc._id || new ObjectId();
 	var id_s = id.toString();
@@ -57,23 +60,24 @@ pod.prototype.insert = function(doc, done) {
 		var doc_s = JSON.stringify(doc);
 		self._redis.set(id_s, doc_s, function(err) {
 			if (err) console.error('[' + new Date().toISOString() + '] (' + self._name + '): error caching document:', err);
-		})
+		});
 		done();
 	})
-}
+};
 
-pod.prototype.remove = function(id, done) {
+Pod.prototype.remove = function(id, done) {
 	var self = this;
 	var id_s = id.toString();
-
-	self._mongo.remove({self._key: ensure(id_s, self._key_type)}, function(err) {
+    var query = {};
+    query[self._key] = ensure(id_s, self._key_type);
+	self._mongo.remove(query, function(err) {
 		if (err) return done(err);
 		self._redis.del(id_s, function(err) {
 			if (err) return done(err);
 			done();
 		})
 	})
-}
+};
 
 function ensure(value, type) {
 	return new type(value.toString()).valueOf();
