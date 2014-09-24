@@ -1,4 +1,4 @@
 pisum
 =====
 
-A simple helper to that mongo store and redis cache in sync
+A simple helper to keep that mongo store and redis cache in sync
