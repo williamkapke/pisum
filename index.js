@@ -1,80 +1,140 @@
 var ObjectId = require('mongodb').ObjectID;
 
-module.exports = exports = function pisum(options) {
-  return new Pod(options);
+module.exports = exports = function(collection, cache, options) {
+  var key = options.key || '_id';
+  var key_type = options.key_type || ObjectId;
+  var projection = options.projection || {};
+
+  return {
+    find: function (id, done) {
+      id = id.toString();
+      cache.get(id, function(err, value) {
+        if (value) return done(null, value);
+
+        var query = {};
+        query[key] = ensure(id, key_type);
+        collection.findOne(query, projection, function (err, value) {
+          if (err) return done(err);
+          if (!value) return done();
+
+          cache.set(id, value);
+          done(null, value);
+        });
+      })
+    },
+
+    update: function (id, update, done) {
+      var query = {};
+      query[key] = ensure(id, key_type);
+      collection.update(query, update, function(err) {
+        if (err) return done(err);
+        cache.del(id.toString(), done);
+      })
+    },
+
+    insert: function (value, done) {
+      var id = value._id || new key_type();
+      value._id = ensure(id, key_type);
+
+      collection.insert(value, function (err) {
+        if (err) return done(err);
+
+        cache.set(id.toString(), value);
+        done();
+      })
+    },
+
+    remove: function (id, done) {
+      var query = {};
+      query[key] = ensure(id, key_type);
+
+      collection.remove(query, function (err) {
+        if (err) return done(err);
+
+        cache.del(id.toString(), done);
+      })
+    }
+  };
 };
 
-function Pod(options) {
-  this._name = options.name || 'PISUM';
-  this._redis = options.redis;
-  this._mongo = options.mongo;
-  this._key = options.key || '_id';
-  this._key_type = options.key_type || ObjectId;
-  this._projection = options.projection || {};
+function default_logger(msg, err) {
+  if(err) console.error('[' + new Date().toISOString() + '] (' +pisum.name+ '): ' + msg, err);
 }
 
-Pod.prototype.find = function (id, done) {
-  var self = this;
-  var id_s = id.toString();
-  self._redis.get(id_s, function (err, doc_s) {
-    if (err) console.error('[' + new Date().toISOString() + '] (' + self._name + '): error reading document from cache:', err);
-    if (doc_s) return done(null, JSON.parse(doc_s));
-    var query = {};
-    query[self._key] = ensure(id_s, self._key_type);
-    self._mongo.findOne(query, self._projection, function (err, doc) {
-      if (err) return done(err);
-      if (!doc) return done();
-      var doc_s = JSON.stringify(doc);
-      self._redis.set(id_s, doc_s, function (err) {
-        if (err) console.error('[' + new Date().toISOString() + '] (' + self._name + '): error caching document:', err);
-      });
-      done(null, doc);
-    });
-  })
+exports.redis = {
+  //a wrapper for a redis <String,String> type
+  string: function(redis, options) {
+    if(!options) options = {};
+    var logerror = options.logerror || default_logger;
+    //the property that is being cached
+    var property = options.property;
+
+    var wrapper = {
+      get: function(id, done) {
+        redis.get(id, function(err, value) {
+          if (err) logerror("error reading cache:", err);
+          value = wrapper.fromValue(value);
+          done(null, value);
+        })
+      },
+      //all sets are fire & forget
+      set: function(id, value) {
+        value = wrapper.toValue(value);
+        redis.set(id, value, logerror.bind(this, 'error writing cache:'));
+      },
+      del: function(id, done) {
+        redis.del(id, done);
+      },
+      toValue: function(value) { return (property? value[property] : value).toString(); },
+      fromValue: function(value) { return property? obj(property, value) : value; }
+    };
+    return wrapper;
+  },
+
+  //a wrapper for a redis <String,NumberString> type
+  number: function(redis, options) {
+    var property = options && options.property;
+    if(!property) throw new Error("property option required");
+
+    var wrapper = exports.redis.string(redis, options);
+    wrapper.fromValue = function(value) { return obj(property, value); };
+    return wrapper;
+  },
+
+  //a wrapper for a redis <String,JsonString> type
+  json: function(redis, options) {
+    var wrapper = exports.redis.string(redis, options);
+    wrapper.toValue = JSON.stringify;
+    wrapper.fromValue = JSON.parse;
+    return wrapper;
+  },
+
+  //a wrapper for a redis <String,Hash> type
+  hash: function(redis, logerror) {
+    throw new Error("Not Implemented");
+  },
+
+  //a wrapper for a redis <String,List> type
+  list: function(redis, logerror) {
+    throw new Error("Not Implemented");
+  },
+
+  //a wrapper for a redis <String,Set> type
+  set: function(redis, logerror) {
+    throw new Error("Not Implemented");
+  },
+
+  //a wrapper for a redis <String,SortedSet> type
+  soretedset: function(redis, logerror) {
+    throw new Error("Not Implemented");
+  }
 };
 
-Pod.prototype.update = function (id, update, done) {
-  var self = this;
-  var id_s = id.toString();
-  var query = {};
-  query[self._key] = ensure(id_s, self._key_type);
-  self._mongo.update(query, update, function (err) {
-    if (err) return done(err);
-    self._redis.del(id_s, function (err) {
-      if (err) return done(err);
-      done();
-    })
-  })
-};
-
-Pod.prototype.insert = function (doc, done) {
-  var self = this;
-  var id = doc._id || new ObjectId();
-  var id_s = id.toString();
-  doc._id = ensure(id_s, self._key_type);
-  self._mongo.insert(doc, function (err) {
-    if (err) return done(err);
-    var doc_s = JSON.stringify(doc);
-    self._redis.set(id_s, doc_s, function (err) {
-      if (err) console.error('[' + new Date().toISOString() + '] (' + self._name + '): error caching document:', err);
-    });
-    done();
-  })
-};
-
-Pod.prototype.remove = function (id, done) {
-  var self = this;
-  var id_s = id.toString();
-  var query = {};
-  query[self._key] = ensure(id_s, self._key_type);
-  self._mongo.remove(query, function (err) {
-    if (err) return done(err);
-    self._redis.del(id_s, function (err) {
-      if (err) return done(err);
-      done();
-    })
-  })
-};
+function obj(prop, value) {
+  var o = {};
+  o[prop] = value;
+  return o;
+}
 
 function ensure(value, type) {
   return new type(value.toString()).valueOf();
