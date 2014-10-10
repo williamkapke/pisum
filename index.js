@@ -34,7 +34,7 @@ module.exports = exports = function(collection, cache, options) {
 
     update: function (id, data, options, done) {
       done = arguments[arguments.length-1];
-      if(done === options || !done) options = default_update_options;
+      if(done === options || !options) options = default_update_options;
       if(options.multi) throw new Error("multi is not supported via pisum");
       if(!options.w) options.w = 1;
 
