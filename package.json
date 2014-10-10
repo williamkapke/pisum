@@ -17,6 +17,10 @@
   },
   "homepage": "https://github.com/tleef/pisum",
   "dependencies": {
-    "mongodb": "~1.4.15"
+    "bson": "*"
+  },
+  "devDependencies": {
+    "debug": "^2.0.0",
+    "should": "^4.0.4"
   }
 }

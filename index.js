@@ -1,46 +1,64 @@
-var ObjectId = require('mongodb').ObjectID;
+var ObjectId = require('bson').ObjectID;
 
 module.exports = exports = function(collection, cache, options) {
+  if(!options) options = {};
   var key = options.key || '_id';
   var key_type = options.key_type || ObjectId;
   var projection = options.projection || {};
+  var default_update_options = options.update_defaults || {w:1};
+  var default_insert_options = options.insert_defaults || {w:1};
 
   return {
+    cache: cache,
+    collection: collection,
+
     find: function (id, done) {
       id = id.toString();
       cache.get(id, function(err, value) {
-        if (value) return done(null, value);
+        if (value) {
+          value[key] = ensure(id, key_type);
+          return done(null, value);
+        }
 
         var query = {};
         query[key] = ensure(id, key_type);
-        collection.findOne(query, projection, function (err, value) {
+        collection.findOne(query, projection, function (err, data) {
           if (err) return done(err);
-          if (!value) return done();
+          if (!data) return done();
 
-          cache.set(id, value);
-          done(null, value);
+          cache.set(id, data);
+          done(null, data);
         });
       })
     },
 
-    update: function (id, update, done) {
+    update: function (id, data, options, done) {
+      done = arguments[arguments.length-1];
+      if(done === options || !done) options = default_update_options;
+      if(options.multi) throw new Error("multi is not supported via pisum");
+      if(!options.w) options.w = 1;
+
       var query = {};
       query[key] = ensure(id, key_type);
-      collection.update(query, update, function(err) {
+      collection.update(query, data, options, function(err) {
         if (err) return done(err);
         cache.del(id.toString(), done);
       })
     },
 
-    insert: function (value, done) {
-      var id = value._id || new key_type();
-      value._id = ensure(id, key_type);
+    insert: function (data, options, done) {
+      done = arguments[arguments.length-1];
+      if(done === options || !options) options = default_insert_options;
+      if(!options.w) options.w = 1;
 
-      collection.insert(value, function (err) {
+      var id = data._id || new key_type();
+      data._id = ensure(id, key_type);
+
+      collection.insert(data, options, function (err, data) {
         if (err) return done(err);
 
-        cache.set(id.toString(), value);
-        done();
+        cache.set(id.toString(), data);
+        done(null, data);
       })
     },
 
@@ -73,7 +91,8 @@ exports.redis = {
       get: function(id, done) {
         redis.get(id, function(err, value) {
           if (err) logerror("error reading cache:", err);
-          value = wrapper.fromValue(value);
+          if(typeof value!=="undefined")
+            value = wrapper.fromValue(value);
           done(null, value);
         })
       },
@@ -97,7 +116,7 @@ exports.redis = {
     if(!property) throw new Error("property option required");
 
     var wrapper = exports.redis.string(redis, options);
-    wrapper.fromValue = function(value) { return obj(property, value); };
+    wrapper.fromValue = function(value) { return obj(property, Number(value)); };
     return wrapper;
   },
 
