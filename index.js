@@ -51,15 +51,15 @@ module.exports = exports = function(collection, cache, options) {
       if(done === options || !options) options = default_insert_options;
       if(!options.w) options.w = 1;
 
-      var id = data._id || new key_type();
-      data._id = ensure(id, key_type);
+      var id = data[key] || new key_type();
+      data[key] = ensure(id, key_type);
 
-      collection.insert(data, options, function (err, data) {
+      collection.insert(data, options, function(err) {
         if (err) return done(err);
 
         cache.set(id.toString(), data);
         done(null, data);
-      })
+      });
     },
 
     remove: function (id, done) {
@@ -80,14 +80,15 @@ function default_logger(msg, err) {
 }
 
 exports.redis = {
-  //a wrapper for a redis <String,String> type
-  string: function(redis, options) {
+  //a wrapper for a redis <String,JsonString> type
+  json: function(redis, options) {
     if(!options) options = {};
     var logerror = options.logerror || default_logger;
     //the property that is being cached
     var property = options.property;
 
     var wrapper = {
+      data: redis.data,//expose the raw data (used with mocked data)
       get: function(id, done) {
         redis.get(id, function(err, value) {
           if (err) logerror("error reading cache:", err);
@@ -104,27 +105,27 @@ exports.redis = {
       del: function(id, done) {
         redis.del(id, done);
       },
-      toValue: function(value) { return (property? value[property] : value).toString(); },
-      fromValue: function(value) { return property? obj(property, value) : value; }
+      toValue: JSON.stringify, //what to do before saving to redis
+      fromValue: JSON.parse //what to do after reading from redis
     };
     return wrapper;
   },
 
   //a wrapper for a redis <String,NumberString> type
   number: function(redis, options) {
-    var property = options && options.property;
-    if(!property) throw new Error("property option required");
-
     var wrapper = exports.redis.string(redis, options);
-    wrapper.fromValue = function(value) { return obj(property, Number(value)); };
+    wrapper.fromValue = function(value) { return obj(options.property, Number(value)); };
     return wrapper;
   },
 
-  //a wrapper for a redis <String,JsonString> type
-  json: function(redis, options) {
-    var wrapper = exports.redis.string(redis, options);
-    wrapper.toValue = JSON.stringify;
-    wrapper.fromValue = JSON.parse;
+  //a wrapper for a redis <String,String> type
+  string: function(redis, options) {
+    var property = options && options.property;
+    if(!property) throw new Error("property option required");
+
+    var wrapper = exports.redis.json(redis, options);
+    wrapper.toValue = function(value) { return value[property].toString(); };
+    wrapper.fromValue = function(value) { return obj(property, value); };
     return wrapper;
   },
 
