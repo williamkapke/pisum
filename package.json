@@ -1,6 +1,6 @@
 {
   "name": "pisum",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -17,7 +17,8 @@
   },
   "homepage": "https://github.com/tleef/pisum",
   "dependencies": {
-    "bson": "*"
+    "bson": "*",
+    "debug": "^2.1.0"
   },
   "devDependencies": {
     "should": "^4.0.4"

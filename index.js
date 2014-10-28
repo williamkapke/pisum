@@ -1,4 +1,5 @@
 var ObjectId = require('bson').ObjectID;
+var debug = require("debug")("pisum");
 
 module.exports = exports = function(collection, cache, options) {
   if(!options) options = {};
@@ -13,6 +14,8 @@ module.exports = exports = function(collection, cache, options) {
     collection: collection,
 
     find: function (id, done) {
+      if(typeof done !== "function") return arguments.callee.bind(this, id);
+      if(debug.enabled) debug("find: " + id)
       id = id.toString();
       cache.get(id, function(err, value) {
         if (value) {
@@ -22,6 +25,7 @@ module.exports = exports = function(collection, cache, options) {
 
         var query = {};
         query[key] = ensure(id, key_type);
+        if(debug.enabled) debug("asking mongo for: " + id)
         collection.findOne(query, projection, function (err, data) {
           if (err) return done(err);
           if (!data) return done();
@@ -34,12 +38,14 @@ module.exports = exports = function(collection, cache, options) {
 
     update: function (id, data, options, done) {
       done = arguments[arguments.length-1];
+      if(typeof done !== "function") return arguments.callee.bind(this, id, data, options);
       if(done === options || !options) options = default_update_options;
       if(options.multi) throw new Error("multi is not supported via pisum");
       if(!options.w) options.w = 1;
 
       var query = {};
       query[key] = ensure(id, key_type);
+      if(debug.enabled) debug("updating: "+id)
       collection.update(query, data, options, function(err) {
         if (err) return done(err);
         cache.del(id.toString(), done);
@@ -48,12 +54,14 @@ module.exports = exports = function(collection, cache, options) {
 
     insert: function (data, options, done) {
       done = arguments[arguments.length-1];
+      if(typeof done !== "function") return arguments.callee.bind(this, data, options);
       if(done === options || !options) options = default_insert_options;
       if(!options.w) options.w = 1;
 
       var id = data[key] || new key_type();
       data[key] = ensure(id, key_type);
 
+      if(debug.enabled) debug("inserting: "+id)
       collection.insert(data, options, function(err) {
         if (err) return done(err);
 
@@ -63,6 +71,7 @@ module.exports = exports = function(collection, cache, options) {
     },
 
     remove: function (id, done) {
+      if(typeof done !== "function") return arguments.callee.bind(this, id);
       var query = {};
       query[key] = ensure(id, key_type);
 
@@ -90,9 +99,10 @@ exports.redis = {
     var wrapper = {
       data: redis.data,//expose the raw data (used with mocked data)
       get: function(id, done) {
+        if(debug.enabled) debug("cache get: " + id)
         redis.get(id, function(err, value) {
           if (err) logerror("error reading cache:", err);
-          if(typeof value!=="undefined")
+          if(value!==null)
             value = wrapper.fromValue(value);
           done(null, value);
         })

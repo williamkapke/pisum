@@ -7,7 +7,7 @@ var r = module.exports = {
   data: redis,
   get: function(id, done) {
     debug("get");
-    done(null, redis[id]);
+    done(null, redis[id] || null);
   },
   //all sets are fire & forget
   set: function(id, value) {
