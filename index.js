@@ -46,7 +46,7 @@ module.exports = exports = function(collection, cache, options) {
       var query = {};
       query[key] = ensure(id, key_type);
       if(debug.enabled) debug("updating: "+id)
-      collection.update(query, data, options, function(err) {
+      collection.update(query, {$set:data}, options, function(err) {
         if (err) return done(err);
         cache.del(id.toString(), done);
       })
